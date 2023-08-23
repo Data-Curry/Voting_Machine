@@ -1,4 +1,10 @@
 from psycopg2.extras import execute_values
+from typing import Tuple, List
+
+Election = Tuple[int, str, str]
+Vote = Tuple[str, int]
+ElectionWithCandidate = Tuple[int, str, str, int, str,int]
+ElectionResults = Tuple[int, str, int, float]
 
 
 CREATE_ELECTIONS = """CREATE TABLE IF NOT EXISTS elections
@@ -36,21 +42,21 @@ def create_tables(connection):
             cursor.execute(CREATE_VOTES)
 
 
-def get_elections(connection):
+def get_elections(connection) -> List[Election]:
     with connection:
         with connection.cursor() as cursor:
             cursor.execute(SELECT_ALL_ELECTIONS)
             return cursor.fetchall()
 
 
-def get_election_details(connection, election_id):
+def get_election_details(connection, election_id) -> List[ElectionWithCandidate]:
     with connection:
         with connection.cursor() as cursor:
             cursor.execute(SELECT_ELECTION_WITH_CANDIDATES, (election_id,))
             return cursor.fetchall()
 
 
-def get_election_and_vote_results(connection, election_id):
+def get_election_and_vote_results(connection, election_id) -> List[ElectionResults]:
     with connection:
         with connection.cursor() as cursor:
             cursor.execute(SELECT_ELECTION_VOTE_DETAILS, (election_id,))

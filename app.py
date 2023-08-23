@@ -2,6 +2,7 @@ import os
 import psycopg2
 from psycopg2.errors import DivisionByZero
 from dotenv import load_dotenv
+from typing import List
 import database
 
 
@@ -47,7 +48,7 @@ def prompt_vote_election(connection):
     database.add_election_vote(connection, username, candidate_id)
 
 
-def _print_election_candidates(election_with_candidates):
+def _print_election_candidates(election_with_candidates: List[database.ElectionWithCandidate]):
     for candidate in election_with_candidates:
         print(f"{candidate[3]}: {candidate[4]}")
 
