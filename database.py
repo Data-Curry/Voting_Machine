@@ -2,9 +2,8 @@ from psycopg2.extras import execute_values
 from typing import Tuple, List
 
 Election = Tuple[int, str, str]
+Candidate = Tuple[int, str, int]
 Vote = Tuple[str, int]
-ElectionWithCandidate = Tuple[int, str, str, int, str,int]
-ElectionResults = Tuple[int, str, int, float]
 
 
 CREATE_ELECTIONS = """CREATE TABLE IF NOT EXISTS elections
@@ -15,22 +14,14 @@ CREATE_VOTES = """CREATE TABLE IF NOT EXISTS votes
 (username TEXT, candidate_id INTEGER, FOREIGN KEY(candidate_id) REFERENCES candidates (id));"""
 
 
+SELECT_ELECTION = "SELECT * FROM elections WHERE id = %s;"
 SELECT_ALL_ELECTIONS = "SELECT * FROM elections;"
-SELECT_ELECTION_WITH_CANDIDATES = """SELECT * FROM elections
-JOIN candidates ON elections.id = candidates.election_id
-WHERE elections.id = %s;"""
-SELECT_ELECTION_VOTE_DETAILS = """SELECT 
-candidates.id, 
-candidates.candidate_text, 
-COUNT(votes.candidate_id) AS vote_count, 
-COUNT(votes.candidate_id) / SUM(COUNT(votes.candidate_id)) OVER() * 100.0 AS vote_percentage 
-FROM candidates 
-LEFT JOIN votes ON candidates.id = votes.candidate_id 
-WHERE candidates.election_id = %s 
-GROUP BY candidates.id;"""
+SELECT_ELECTION_CANDIDATES = """SELECT * FROM candidates WHERE election_id = %s;"""
+SELECT_CANDIDATE = "SELECT * FROM candidates WHERE id = %s;"
+SELECT_VOTES_FOR_CANDIDATE = "SELECT * FROM votes WHERE candidate_id = %s;"
 
 INSERT_ELECTION_RETURN_ID = "INSERT INTO elections (title, creator_username) VALUES (%s, %s) RETURNING id;"
-INSERT_CANDIDATE = "INSERT INTO candidates (candidate_text, election_id) VALUES %s;"
+INSERT_CANDIDATE_RETURN_ID  = "INSERT INTO candidates (candidate_text, election_id) VALUES %s;"
 INSERT_VOTE = "INSERT INTO votes (username, candidate_id) VALUES (%s, %s);"
 
 
@@ -42,6 +33,25 @@ def create_tables(connection):
             cursor.execute(CREATE_VOTES)
 
 
+#  -- elections --
+
+
+def get_election(connection, election_id: int) -> Election:
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(SELECT_ELECTION, (election_id,))
+            return cursor.fetchone()
+
+
+def create_election(connection, title: str, creator:str):
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(INSERT_ELECTION_RETURN_ID, (title, creator))
+
+            election_id = cursor.fetchone()[0]
+            return election_id
+
+
 def get_elections(connection) -> List[Election]:
     with connection:
         with connection.cursor() as cursor:
@@ -49,31 +59,43 @@ def get_elections(connection) -> List[Election]:
             return cursor.fetchall()
 
 
-def get_election_details(connection, election_id) -> List[ElectionWithCandidate]:
+def get_election_candidates(connection, election_id: int) -> List[Candidate]:
     with connection:
         with connection.cursor() as cursor:
-            cursor.execute(SELECT_ELECTION_WITH_CANDIDATES, (election_id,))
+            cursor.execute(SELECT_ELECTION_CANDIDATES, (election_id,))
             return cursor.fetchall()
-
-
-def get_election_and_vote_results(connection, election_id) -> List[ElectionResults]:
-    with connection:
-        with connection.cursor() as cursor:
-            cursor.execute(SELECT_ELECTION_VOTE_DETAILS, (election_id,))
-            return cursor.fetchall()
-
-def create_election(connection, title, creator, candidates):
-    with connection:
-        with connection.cursor() as cursor:
-            cursor.execute(INSERT_ELECTION_RETURN_ID, (title, creator))
-
-            election_id = cursor.fetchone()[0]
-            candidate_values = [(candidate_text, election_id) for candidate_text in candidates]
-
-            execute_values(cursor, INSERT_CANDIDATE, candidate_values)
 
 
 def add_election_vote(connection, username, candidate_id):
     with connection:
         with connection.cursor() as cursor:
             cursor.execute(INSERT_VOTE, (username, candidate_id))
+
+
+#  -- candidates --
+
+
+def get_candidate(connection, candidate_id: int) -> Candidate:
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(SELECT_CANDIDATE, (candidate_id,))
+            return cursor.fetchone()
+
+
+def add_candidate(connection, candidate_text, election_id: int):
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(INSERT_CANDIDATE_RETURN_ID, (candidate_text, election_id))
+            candidate_id = cursor.fetchone()[0]
+            return candidate_id
+
+
+#  -- votes --
+
+
+def get_votes_for_candidate(connection, candidate_id: int) -> List[Vote]:
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(SELECT_VOTES_FOR_CANDIDATE, (candidate_id,))
+            return cursor.fetchall()
+

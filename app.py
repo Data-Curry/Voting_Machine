@@ -1,9 +1,10 @@
-import os
-import psycopg2
-from psycopg2.errors import DivisionByZero
-from dotenv import load_dotenv
 from typing import List
+import random
+
 import database
+from models.election import Election
+from models.candidate import Candidate
+from connections import create_connection
 
 
 DATABASE_PROMPT = "Enter the DATABASE_URI value or leave empty to load from .env file: "
@@ -19,50 +20,60 @@ Enter your choice: """
 NEW_CANDIDATE_PROMPT = "Enter new candidate's name (or leave empty to stop adding candidates): "
 
 
-def prompt_create_election(connection):
+def prompt_create_election():
     election_title = input("Enter election title: ")
     election_creator = input("Enter election creator: ")
-    candidates = []
+    election = Election(election_title, election_creator)
+    election.save()
 
     while (new_candidate := input(NEW_CANDIDATE_PROMPT)):
-        candidates.append(new_candidate)
-
-    database.create_election(connection, election_title, election_creator, candidates)
+        election.add_candidate(new_candidate)
 
 
-def list_open_elections(connection):
-    elections = database.get_elections(connection)
-
-    for _id, title, creator in elections:
-        print(f"{_id}: {title} (created by {creator})")
+def list_open_elections():
+    for election in Election.all():
+        print(f"{election.id}: {election.title} (created by {election.creator})")
 
 
-def prompt_vote_election(connection):
-    election_id = int(input("Enter election would you like to vote on: "))
-
-    election_candidates = database.get_election_details(connection, election_id)
-    _print_election_candidates(election_candidates)
+def prompt_vote_election():
+    election_id = int(input("Enter election you would like to vote in: "))
+    _print_election_candidates(Election.get(election_id).candidates)
 
     candidate_id = int(input("Enter candidate you'd like to vote for: "))
     username = input("Enter the username you'd like to vote as: ")
-    database.add_election_vote(connection, username, candidate_id)
+    Candidate.get(candidate_id).vote(username)
 
 
-def _print_election_candidates(election_with_candidates: List[database.ElectionWithCandidate]):
-    for candidate in election_with_candidates:
-        print(f"{candidate[3]}: {candidate[4]}")
+def _print_election_candidates(candidates: List[Candidate]):
+    for candidate in candidates:
+        print(f"{candidate[2]}: {candidate[0]}")
 
 
-def show_election_votes(connection):
+def show_election_votes():
+    connection = create_connection()
     election_id = int(input("Enter election you would like to see votes for: "))
+    candidates = Election.get(election_id).candidates  # candidate_text, election_id, candidate_id
+    title = Election.get(election_id).title
+    votes_per_candidate = []
+    vote_count = []
+    total_votes = 0
+    print(f"Election for {title}... ")
+    for candidate in candidates:
+        c_id = candidate[2]
+        candidate_votes = database.get_votes_for_candidate(connection, c_id)
+        votes_per_candidate.append(candidate_votes)
+
+    for candidate in votes_per_candidate:
+        c_votes = len(candidate)
+        vote_count.append(c_votes)
+        total_votes += c_votes
+
     try:
-        # This gives us count and percentage of votes for each candidate in an election
-        election_and_votes = database.get_election_and_vote_results(connection, election_id)
-    except DivisionByZero:
+        for candidate, votes in zip(candidates, vote_count):
+            percentage = votes / total_votes * 100
+            print(f"{candidate[0]} got {votes} votes ({percentage:.2f}% of total)")
+    except ZeroDivisionError:
         print("No votes have been cast in this election.")
-    else:
-        for _id, candidate_text, count, percentage in election_and_votes:
-            print(f"{candidate_text} got {count} votes ({percentage:.2f}% of total)")
 
 
 MENU_OPTIONS = {
@@ -74,17 +85,12 @@ MENU_OPTIONS = {
 
 
 def menu():
-    database_uri = input(DATABASE_PROMPT)
-    if not database_uri:
-        load_dotenv()
-        database_uri = os.environ["DATABASE_URI"]
-
-    connection = psycopg2.connect(database_uri)
+    connection = create_connection()
     database.create_tables(connection)
 
     while (selection := input(MENU_PROMPT)) != "5":
         try:
-            MENU_OPTIONS[selection](connection)
+            MENU_OPTIONS[selection]()
         except KeyError:
             print("Invalid input selected. Please try again.")
 
